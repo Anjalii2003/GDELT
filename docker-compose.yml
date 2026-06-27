@@ -1,0 +1,174 @@
+# # services:
+
+# #   # ── PostgreSQL with pgvector extension ─────────────────────────────────────
+# #   postgres:
+# #     image: pgvector/pgvector:pg16
+# #     container_name: gdelt_postgres
+# #     restart: unless-stopped
+# #     environment:
+# #       POSTGRES_USER: gdelt
+# #       POSTGRES_PASSWORD: gdelt_pass
+# #       POSTGRES_DB: gdelt_rag
+# #     ports:
+# #       - "5432:5432"
+# #     volumes:
+# #       - postgres_data:/var/lib/postgresql/data
+# #       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+
+# #     # 🔥 Disabled (avoids false unhealthy issue)
+# #     healthcheck:
+# #       disable: true
+
+# #   # ── Ollama — local LLM server ───────────────────────────────────────────────
+# #   ollama:
+# #     image: ollama/ollama:latest
+# #     container_name: gdelt_ollama
+# #     restart: unless-stopped
+# #     ports:
+# #       - "11434:11434"
+# #     volumes:
+# #       - ollama_data:/root/.ollama
+
+# #     # ✅ DNS fix (important)
+# #     dns:
+# #       - 8.8.8.8
+# #       - 1.1.1.1
+
+# #     # 🔥 Disabled (avoids false unhealthy issue)
+# #     healthcheck:
+# #       disable: true
+
+# #     deploy:
+# #       resources:
+# #         reservations:
+# #           devices:
+# #             - driver: nvidia
+# #               count: all
+# #               capabilities: [gpu]
+
+# #   # ── Model downloader — runs once ───────────────────────────────────────────
+# #   ollama_pull:
+# #     image: curlimages/curl:latest
+# #     container_name: gdelt_ollama_pull
+# #     depends_on:
+# #       - ollama
+# #     restart: "no"
+# #     entrypoint: >
+# #       sh -c "
+# #         echo 'Pulling llama3 model...' &&
+# #         curl -sf -X POST http://ollama:11434/api/pull \
+# #         -H 'Content-Type: application/json' \
+# #         -d '{\"name\": \"llama3\"}' &&
+# #         echo 'llama3 ready!'
+# #       "
+
+# #   # ── RAG Pipeline app ────────────────────────────────────────────────────────
+# #   rag_app:
+# #     build:
+# #       context: .
+# #       dockerfile: Dockerfile
+# #     container_name: gdelt_rag_app
+# #     restart: unless-stopped
+
+# #     # 🔥 Removed strict health dependency
+# #     depends_on:
+# #       - postgres
+# #       - ollama
+
+# #     environment:
+# #       DATABASE_URL: postgresql://gdelt:gdelt_pass@postgres:5432/gdelt_rag
+# #       OLLAMA_HOST: http://ollama:11434
+
+# #     volumes:
+# #       - ./data:/app/data
+# #       - ./db:/app/db
+# #       - ./pipeline:/app/pipeline
+# #       - ./chatbot:/app/chatbot
+# #       - model_cache:/root/.cache
+
+# #     stdin_open: true
+# #     tty: true
+
+# #     command: ["python", "chatbot/app.py"]
+
+# # volumes:
+# #   postgres_data:
+# #   ollama_data:
+# #   model_cache:
+
+# services:
+
+#   # ── PostgreSQL with pgvector extension ─────────────────────────────────────
+#   postgres:
+#     image: pgvector/pgvector:pg16
+#     container_name: gdelt_postgres
+#     restart: unless-stopped
+#     environment:
+#       POSTGRES_USER: gdelt
+#       POSTGRES_PASSWORD: gdelt_pass
+#       POSTGRES_DB: gdelt_rag
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+
+#     healthcheck:
+#       disable: true
+
+
+#   # ── Mistral (vLLM) ─────────────────────────────────────────────────────────
+#   mistral:
+#     image: vllm/vllm-openai:latest
+#     container_name: mistral_7b
+#     restart: unless-stopped
+#     ports:
+#       - "8002:8000"
+
+#     deploy:
+#       resources:
+#         reservations:
+#           devices:
+#             - driver: nvidia
+#               count: all
+#               capabilities: [gpu]
+
+#     command: >
+#       --model mistralai/Mistral-7B-Instruct-v0.2
+#       --host 0.0.0.0
+#       --port 8000
+
+
+#   # ── RAG Pipeline App ────────────────────────────────────────────────────────
+#   rag_app:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: gdelt_rag_app
+#     restart: unless-stopped
+
+#     depends_on:
+#       - postgres
+#       - mistral
+
+#     environment:
+#       DATABASE_URL: postgresql://gdelt:gdelt_pass@postgres:5432/gdelt_rag
+#       LLM_BASE_URL: http://mistral:8000/v1
+#       LLM_MODEL: mistralai/Mistral-7B-Instruct-v0.2
+
+#     volumes:
+#       - ./data:/app/data
+#       - ./db:/app/db
+#       - ./pipeline:/app/pipeline
+#       - ./chatbot:/app/chatbot
+#       - model_cache:/root/.cache
+
+#     stdin_open: true
+#     tty: true
+
+#     command: ["python", "chatbot/app.py"]
+
+
+# volumes:
+#   postgres_data:
+#   model_cache:
